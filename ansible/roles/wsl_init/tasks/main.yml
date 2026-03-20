@@ -1,0 +1,164 @@
+---
+- name: Clean up conflicting Docker apt sources
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/docker.list
+    - /etc/apt/sources.list.d/docker.sources
+    - /etc/apt/keyrings/docker.gpg
+    - /etc/apt/keyrings/docker.asc
+
+- name: Set timezone to Australia/Melbourne
+  file:
+    src: /usr/share/zoneinfo/Australia/Melbourne
+    dest: /etc/localtime
+    state: link
+    force: yes
+
+- name: Install dependencies
+  apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - unzip
+      - libnss3
+      - openssh-server
+    state: present
+    update_cache: yes
+
+- name: Ensure keyrings directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Docker GPG key
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+    filename: docker
+
+- name: Add Git PPA
+  apt_repository:
+    repo: ppa:git-core/ppa
+    state: present
+
+- name: Install Docker and Git
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+      - git
+    state: present
+    update_cache: yes
+
+- name: Add user to docker group
+  user:
+    name: "{{ lookup('env', 'USER') }}"
+    groups: docker
+    append: yes
+
+- name: Install NVM
+  shell: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+  args:
+    creates: "{{ lookup('env', 'HOME') }}/.nvm/nvm.sh"
+  become: no
+
+- name: Install Miniforge
+  block:
+    - name: Download Miniforge installer
+      get_url:
+        url: https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+        dest: /tmp/Miniforge3.sh
+        mode: '0755'
+
+    - name: Run Miniforge installer
+      shell: bash /tmp/Miniforge3.sh -b -p {{ lookup('env', 'HOME') }}/miniforge3
+      args:
+        creates: "{{ lookup('env', 'HOME') }}/miniforge3/bin/conda"
+
+    - name: Initialize Miniforge for bash
+      shell: "{{ lookup('env', 'HOME') }}/miniforge3/bin/conda init bash"
+      args:
+        creates: "{{ lookup('env', 'HOME') }}/.bashrc_conda_initialized" # Custom marker or check for conda block in .bashrc
+      register: conda_init
+      failed_when: false
+
+    - name: Install uv via conda
+      shell: "{{ lookup('env', 'HOME') }}/miniforge3/bin/conda install -y -c conda-forge uv"
+      args:
+        creates: "{{ lookup('env', 'HOME') }}/miniforge3/bin/uv"
+
+  become: no
+
+- name: Get Windows Identity for Git
+  shell: |
+    # Get raw username and email
+    RAW_USER=$(/mnt/c/Windows/System32/whoami.exe | tr -d '\r' | sed 's/.*\\//')
+    WIN_EMAIL=$(/mnt/c/Windows/System32/whoami.exe /UPN | tr -d '\r')
+    
+    # Capitalize first letters and format display name (e.g. thomas.han -> Thomas Han)
+    USER_CAP=$(echo "$RAW_USER" | sed -E 's/(^|\.)([a-z])/\1\u\2/g')
+    WIN_NAME=$(echo "$USER_CAP" | sed 's/\./ /')
+    
+    # Determine Git Credential Manager path
+    SYS_GCM="/mnt/c/Program Files/Git/mingw64/bin/git-credential-manager.exe"
+    LOCAL_GCM="/mnt/c/Users/$RAW_USER/AppData/Local/Programs/Git/mingw64/bin/git-credential-manager.exe"
+    
+    if [ -x "$SYS_GCM" ]; then
+        GCM="$SYS_GCM"
+    else
+        GCM="$LOCAL_GCM"
+    fi
+    
+    # Quote the path for Git config
+    GCM_QUOTED="\"$GCM\""
+    
+    echo "$WIN_NAME|$WIN_EMAIL|$GCM_QUOTED"
+  register: win_identity
+  changed_when: false
+  become: no
+
+- name: Configure Git
+  git_config:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    scope: global
+  loop:
+    - { name: "user.name", value: "{{ win_identity.stdout.split('|')[0] }}" }
+    - { name: "user.email", value: "{{ win_identity.stdout.split('|')[1] }}" }
+    - { name: "credential.helper", value: "{{ win_identity.stdout.split('|')[2] }}" }
+    - { name: "credential.useHttpPath", value: "true" }
+  become: no
+
+- name: Install Netskope Agent (STAgent)
+  block:
+    - name: Download STAgent
+      get_url:
+        url: https://download-coinvest.goskope.com/dlr/linux/get
+        dest: /tmp/STAgent.run
+        mode: '0755'
+    
+    - name: Run STAgent installer
+      shell: "/tmp/STAgent.run -H coinvest.goskope.com -o oz8f0az7H855wSOLamvn -m {{ win_identity.stdout.split('|')[1] }} -a a57530dffa850a646ef81e5bb7f6c59d -c"
+      register: stagent_install
+      failed_when: stagent_install.rc != 0 and stagent_install.rc != 1
+    
+    - name: Cleanup STAgent installer
+      file:
+        path: /tmp/STAgent.run
+        state: absent
+  become: yes

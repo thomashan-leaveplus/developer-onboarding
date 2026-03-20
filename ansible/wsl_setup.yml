@@ -1,0 +1,8 @@
+---
+- name: Initial WSL Setup
+  hosts: localhost
+  connection: local
+  become: yes
+  
+  roles:
+    - wsl_init
