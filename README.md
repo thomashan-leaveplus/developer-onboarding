@@ -91,7 +91,7 @@ To execute the automated setup:
 2. Navigate to the directory containing the onboarding script.
 3. Run the bootstrap script:
    ```powershell
-   .\bootstrap.ps1
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass; .\bootstrap.ps1
    ```
 4. Follow the prompts. The script will automatically:
     - Verify/install Git on Windows.
