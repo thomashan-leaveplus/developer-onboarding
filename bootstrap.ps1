@@ -104,6 +104,7 @@ Function Install-WSL {
         Write-Host "$WslDistro is already installed." -ForegroundColor Green
     } else {
         Write-Host "$WslDistro not found. Installing..." -ForegroundColor Yellow
+        Write-Host "You may need to exit out of WSL instance for rest of the installation to complete" -ForegroundColor Yellow
         wsl --install -d $WslDistro
         
         if ($LASTEXITCODE -eq 0) {
