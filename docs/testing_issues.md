@@ -196,3 +196,42 @@ This file documents the technical challenges, edge cases, and learnings encounte
 ## 38. Test Failures due to Uncommitted Local Changes
 - **Issue:** During 	est_bootstrap.ps1, the Execute-WSLPlaybook step failed because the cloned repository in the test instance did not contain the nsible directory or the latest script changes (as they were only present in the local workspace).
 - **Solution:** For local testing, mock the repository initialization in the test script to copy the local workspace files into the test instance instead of performing a git clone from the remote origin.
+
+## 39. Missing 'sudo' in Minimal WSL Images
+- **Issue:** During 	est_bootstrap.ps1 using ubuntu-base, the Ansible playbook failed because sudo was not installed: `/bin/sh: 1: sudo: not found`.
+- **Solution:** Add sudo to the list of packages installed during the Bootstrap-Ansible phase in ootstrap.ps1.
+
+## 40. SSL Certificate Verification Failure during PPA Addition
+- **Issue:** The Ansible task Add Git PPA failed with `[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain`.
+- **Root Cause:** The WSL instance lacks corporate root CA certificates required to verify intercepted SSL connections during PPA metadata fetching.
+- **Solution:** Add a task to install/update corporate root certificates before adding PPAs, or use alidate_certs: no if supported (though not recommended for security). Alternatively, pre-install certificates during the Bootstrap-Ansible phase.
+
+## 41. Docker Repository Failure on Ubuntu 24.04 (noble)
+- **Issue:** The Ansible task Add Docker repository succeeds, but pt update fails with `repository ... doesn't support architecture 'x86_64'` for 
+oble.
+- **Root Cause:** The Docker repository for Ubuntu 24.04 (
+oble) is incomplete or misconfigured on the upstream server.
+- **Solution:** Temporarily use the jammy (22.04) repository for Docker on 
+oble systems until the upstream repository is fixed.
+
+## 42. Robocopy Flattening Behavior with Wildcards
+- **Issue:** When using `robocopy <src> <dst> /E` where `<src>` is a WSL UNC path (e.g., `\\wsl.localhost\...`), robocopy may flatten the directory structure if wildcards or certain path combinations are used.
+- **Root Cause:** Inconsistent handling of WSL network shares by Windows copy tools.
+- **Solution:** Use a "Middleman Strategy":
+    1. Robocopy from WSL to a local Windows Temp folder.
+    2. Robocopy from the local Windows Temp folder to the target WSL instance.
+    This ensures that structure is preserved by avoiding direct WSL-to-WSL UNC transfers.
+
+## 43. Conda SSL Verification Failure
+- **Issue:** Conda package installation (e.g., `conda install uv`) fails with `[SSL: CERTIFICATE_VERIFY_FAILED]` in environments with intercepted SSL (corporate proxies/Netskope).
+- **Solution:** Disable SSL verification specifically for the Conda command using `conda config --set ssl_verify false` before running installations. While less secure, it is necessary for bootstrapping in these environments until root certificates are fully injected into the Conda environment.
+
+## 44. Avoid Git PPA (git-core/ppa)
+- **Issue:** Previously, the git-core/ppa was added to install the latest Git version (e.g., 2.53+). 
+- **Decision:** Do NOT add git-core/ppa back into the onboarding automation. The standard Ubuntu LTS repositories (e.g., Git 2.43 on Ubuntu 24.04) are sufficient for the current developer needs, and avoiding third-party PPAs reduces maintenance overhead and potential compatibility issues with corporate proxies.
+
+## 45. PowerShell Script Execution Policy for Onboarding Setup
+- **Issue:** Running `.\bootstrap.ps1` fails on fresh Windows devices with `Restricted` or `RemoteSigned` script execution policies, throwing a script execution blocked error.
+- **Root Cause:** Script execution policy cannot be bypassed from within the script itself because PowerShell blocks the script before any code executes.
+- **Solution:** Updated the onboarding instructions in `README.md` to instruct the developer to run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` within the process scope before executing `.\bootstrap.ps1`. This ensures the policy is only bypassed for the active terminal session and does not persist globally.
+
