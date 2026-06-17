@@ -55,12 +55,6 @@
         Architectures: {{ ansible_architecture | replace('x86_64', 'amd64') }}
         Signed-By: /etc/apt/keyrings/docker.asc
 
-
-- name: Add Git PPA
-  apt_repository:
-    repo: ppa:git-core/ppa
-    state: present
-
 - name: Install Docker and Git
   apt:
     name:
