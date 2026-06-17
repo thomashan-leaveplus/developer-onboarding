@@ -1,7 +1,7 @@
 # Bootstrap Script for Developer Onboarding
 # This script installs Git and WSL as the initial steps for automation.
 
-$DefaultDistro = "Ubuntu-24.04"
+$DefaultDistro = "Ubuntu-26.04"
 $DefaultRepoUrl = "https://github.com/thomashan-leaveplus/developer-onboarding.git"
 
 $WslDistro = Read-Host "Enter the WSL distribution name (default: $DefaultDistro)"
@@ -228,31 +228,74 @@ Function Execute-WSLPlaybook {
     }
 }
 
+
+Function Configure-PasswordlessSudo {
+    Write-Host "`n--- Configuring Passwordless sudo in WSL ---" -ForegroundColor Cyan
+
+    $script = @'
+USERNAME=$(id -un 1000 2>/dev/null || whoami)
+
+echo "Configuring passwordless sudo for $USERNAME..."
+
+# Create sudoers file safely
+echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/99-dev-nopasswd
+
+# Fix permissions (required or sudo will ignore it)
+chmod 440 /etc/sudoers.d/99-dev-nopasswd
+
+echo "Passwordless sudo configured."
+'@
+
+    Run-WSLScript -Script $script -User "root"
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Passwordless sudo setup complete." -ForegroundColor Green
+    } else {
+        Write-Warning "Failed to configure passwordless sudo."
+    }
+}
+
+
 # Execution
 Confirm-STAgentToken
 Check-Admin
 Install-Git
 Install-WSL
 Bootstrap-Ansible
+Configure-PasswordlessSudo
 Configure-WSLGitCredentials
 
 Write-Host "`n--- Environment Ready ---" -ForegroundColor Green
 $choice = Read-Host "Would you like to clone the onboarding repo and run the setup playbook now? (y/n)"
 
+
 if ($choice -eq "y") {
     $detectedUrl = ""
     try { $detectedUrl = git remote get-url origin 2>$null } catch {}
-    if ([string]::IsNullOrWhiteSpace($detectedUrl)) { $detectedUrl = $DefaultRepoUrl }
+
+    if ([string]::IsNullOrWhiteSpace($detectedUrl)) {
+        $detectedUrl = $DefaultRepoUrl
+    }
     
-    $repoUrl = Read-Host "Enter the onboarding Git repository URL" -DefaultValue $detectedUrl
-    
+    $repoUrl = Read-Host "Enter the onboarding Git repository URL [$detectedUrl]"
+
+    # Apply default if empty
+    if ([string]::IsNullOrWhiteSpace($repoUrl)) {
+        $repoUrl = $detectedUrl
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($repoUrl)) {
+        Write-Host "`nUsing repository: $repoUrl" -ForegroundColor Cyan
+
         if (Initialize-WSLRepository -RepoUrl $repoUrl) {
             Execute-WSLPlaybook
+        } else {
+            Write-Error "Repository initialization failed. Aborting playbook execution."
         }
     } else {
         Write-Warning "No repository URL provided. Skipping final setup."
     }
+
 } else {
     Write-Host "`nTo finish setup manually, open WSL and run:" -ForegroundColor Yellow
     Write-Host "1. git clone <repo-url> ~/developer-onboarding"
