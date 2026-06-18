@@ -164,3 +164,77 @@
         path: /tmp/STAgent.run
         state: absent
   become: yes
+
+- name: Configure Personal Access Token for uv package
+  block:
+    - name: Check if zsh is available
+      command: which zsh
+      register: zsh_check
+      failed_when: false
+      changed_when: false
+
+    - name: Check if fish is available
+      command: which fish
+      register: fish_check
+      failed_when: false
+      changed_when: false
+
+    - name: Prompt for UV Personal Access Token
+      pause:
+        prompt: |
+          Please generate a Personal Access Token (PAT) at:
+          https://dev.azure.com/leaveplus/_usersSettings/tokens
+          
+          Enter your Personal Access Token (PAT) for uv (leave empty to skip)
+        echo: no
+      register: uv_pat_prompt
+      when: lookup('env', 'UV_INDEX_PRIVATE_REGISTRY_PASSWORD') == ""
+
+    - name: Set uv_pat fact
+      set_fact:
+        uv_pat: "{{ lookup('env', 'UV_INDEX_PRIVATE_REGISTRY_PASSWORD') if lookup('env', 'UV_INDEX_PRIVATE_REGISTRY_PASSWORD') != '' else (uv_pat_prompt.user_input | default('')) }}"
+
+    - name: Ensure UV PAT is configured in .bashrc
+      lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.bashrc"
+        line: 'export UV_INDEX_PRIVATE_REGISTRY_PASSWORD="{{ uv_pat }}"'
+        regexp: '^export UV_INDEX_PRIVATE_REGISTRY_PASSWORD='
+        state: present
+        create: yes
+        mode: '0644'
+      when: uv_pat != ""
+
+    - name: Ensure UV PAT is configured in .zshrc
+      lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.zshrc"
+        line: 'export UV_INDEX_PRIVATE_REGISTRY_PASSWORD="{{ uv_pat }}"'
+        regexp: '^export UV_INDEX_PRIVATE_REGISTRY_PASSWORD='
+        state: present
+        create: yes
+        mode: '0644'
+      when:
+        - uv_pat != ""
+        - zsh_check.rc == 0
+
+    - name: Ensure fish config directory exists
+      file:
+        path: "{{ lookup('env', 'HOME') }}/.config/fish"
+        state: directory
+        mode: '0755'
+      when:
+        - uv_pat != ""
+        - fish_check.rc == 0
+
+    - name: Ensure UV PAT is configured in fish config
+      lineinfile:
+        path: "{{ lookup('env', 'HOME') }}/.config/fish/config.fish"
+        line: 'set -gx UV_INDEX_PRIVATE_REGISTRY_PASSWORD "{{ uv_pat }}"'
+        regexp: '^set -gx UV_INDEX_PRIVATE_REGISTRY_PASSWORD '
+        state: present
+        create: yes
+        mode: '0644'
+      when:
+        - uv_pat != ""
+        - fish_check.rc == 0
+  become: no
+
