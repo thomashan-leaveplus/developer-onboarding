@@ -182,7 +182,7 @@
     - name: Prompt for UV Personal Access Token
       pause:
         prompt: |
-          Please generate a Personal Access Token (PAT) at:
+          Please generate a Personal Access Token (PAT) with `Package Read` scope at:
           https://dev.azure.com/leaveplus/_usersSettings/tokens
           
           Enter your Personal Access Token (PAT) for uv (leave empty to skip)
