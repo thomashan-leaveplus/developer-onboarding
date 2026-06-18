@@ -127,7 +127,7 @@
     fi
     
     # Quote the path for Git config
-    GCM_QUOTED="\"$GCM\""
+    GCM_QUOTED="!\"$GCM\""
     
     echo "$WIN_NAME|$WIN_EMAIL|$GCM_QUOTED"
   register: win_identity
